@@ -2,12 +2,17 @@
 
 pragma solidity ^0.8.17;
 
-import "./ERC721AUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 
-contract ERC721ANameableUpgradeable is Initializable, ERC721AUpgradeable {
+contract ERC721ANameableUpgradeable is Initializable {
 
     // VARIABLES //
+
+    /// @notice Uint256 for bio change price in $PNUT
+	uint256 public bioChangePrice;
+	
+    /// @notice Uint256 for name change price in $PNUT.
+    uint256 public nameChangePrice;
 
     /// @notice Mapping for bio associated with a tokenId.
 	mapping(uint256 => string) internal bio;
@@ -18,31 +23,13 @@ contract ERC721ANameableUpgradeable is Initializable, ERC721AUpgradeable {
 	/// @notice Mapping for name associated with a tokenId.
 	mapping(uint256 => string) internal _tokenName;
 
-    /// @notice Uint256 for bio change price in $PNUT
-	uint256 public bioChangePrice;
-	
-    /// @notice Uint256 for name change price in $PNUT.
-    uint256 public nameChangePrice;
-
-    // EVENTS //
-	
-    /// @notice Event emitted when token name is changed.
-    event NameChange(uint256 indexed tokenId, string newName);
-	
-    /// @notice Event emitted when token bio is changed.
-    event BioChange(uint256 indexed tokenId, string bio);
-
     // INTERNAL FUNCTIONS //
 
     /// @notice Internal function called when smart contract is initialized.
-    function __ERC721ANameable_init(string memory _name, string memory _symbol) internal onlyInitializing {
-        __ERC721ANameable_init_unchained(_name, _symbol);
-    } 
+    function __ERC721ANameable_init() internal onlyInitializing {}
 
     /// @notice Internal function called when smart contract is initialized.
-    function __ERC721ANameable_init_unchained(string memory _name, string memory _symbol) internal onlyInitializing {
-        __ERC721A_init(_name, _symbol);
-    }
+    function __ERC721ANameable_init_unchained() internal onlyInitializing {}
 
 	/// @notice Internal function called which reserves the name if isReserve is set to true, de-reserves if set to false.
 	function toggleReserveName(string memory str, bool isReserve) internal {
@@ -59,13 +46,11 @@ contract ERC721ANameableUpgradeable is Initializable, ERC721AUpgradeable {
 		}
         toggleReserveName(newName, true);
 		_tokenName[tokenId] = newName;
-		emit NameChange(tokenId, newName);
 	}
 
     /// @notice Function called when changing token bio.
 	function changeBio(uint256 _tokenId, string memory _bio) public virtual {
 		bio[_tokenId] = _bio;
-		emit BioChange(_tokenId, _bio); 
 	}
 
     // GETTER FUNCTIONS, READ CONTRACT FUNCTIONS //
@@ -128,4 +113,11 @@ contract ERC721ANameableUpgradeable is Initializable, ERC721AUpgradeable {
 		}
 		return string(bLower);
 	}
+
+    /**
+     * @dev This empty reserved space is put in place to allow future versions to add new
+     * variables without shifting down storage in the inheritance chain.
+     * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+     */
+    uint256[45] private __gap;
 }
