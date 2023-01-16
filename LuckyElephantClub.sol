@@ -3,21 +3,24 @@
 pragma solidity ^0.8.17;
 
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import "./ERC721ANameableUpgradeable.sol";
+import "./ERC721AUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol";
 import "operator-filter-registry/src/upgradeable/DefaultOperatorFiltererUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/common/ERC2981Upgradeable.sol";
+import "./ERC721ANameableUpgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import "./IPNBB.sol";
 import "./IPNUT.sol";
 import "@openzeppelin/contracts-upgradeable/utils/cryptography/MerkleProofUpgradeable.sol";
 
-
-contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, OwnableUpgradeable, DefaultOperatorFiltererUpgradeable, ERC2981Upgradeable, UUPSUpgradeable {
+contract LuckyElephantClub is Initializable, ERC721AUpgradeable, OwnableUpgradeable, DefaultOperatorFiltererUpgradeable, ERC2981Upgradeable, ERC721ANameableUpgradeable, UUPSUpgradeable {
 
     using StringsUpgradeable for uint256;
 
     // VARIABLES //
+
+    /// @notice Bytes32 for merkle root hash.
+    bytes32 public merkleRoot;
 
     /// @notice PNBB erc20 token contract address.
     IPNBB public PNBB;
@@ -31,11 +34,14 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
     /// @notice Boolean to reveal or unreveal.
     bool public revealed;
 
-    /// @notice Bytes32 for merkle root hash.
-    bytes32 public merkleRoot;
+    /// @notice Uint256 for amalgamation price in $PNUT.
+    uint256 public amalgamatePrice;
+
+    /// @notice Uint256 for max supply of the entire collection.
+    uint256 public maxSupply;
 
     /**
-     * @notice Mapping for total number of NFTs minted by an address for a sale mode.
+     * @notice Uint256 for sale mode.
      * Sale modes:
      * 1 = Genesis Whitelist Mint,
      * 2 = OGS Whitelist Mint, 
@@ -43,9 +49,28 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
      * 4 = Genesis Public Mint,
      * 5 = OGS Public Mint,
      * 6 = LuckyList Public Mint,
-     * 7 = Amalgamation / Baby
+     * 7 = Amalgamation / Baby .
      */
-    mapping(uint256 => mapping(address => uint256)) public addressMinted;
+    uint256 public saleMode;
+
+    /// @notice String for base token URI prefix.
+    string public baseTokenURIPrefix;
+
+    /// @notice String for base token URI suffix.
+    string public baseTokenURISuffix;
+
+    /// @notice String for not revealed URI.
+    string public notRevealedURI;
+
+    /// @notice Struct for storing details of baby.
+    struct Baby {
+        uint256 parent1;
+        uint256 parent2;
+        string dna;
+    }
+
+    /// @notice Mapping for DNA.
+	mapping(string => Baby) public DNA;
 
     /// @notice Mapping for balance of genesis associated with an address.
     mapping(address => uint256) public balanceGenesis;
@@ -115,34 +140,9 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
      * 7 = Amalgamation / Baby
      */
     mapping(uint256 => uint256) public _price;
-    
-    /// @notice Mapping for DNA.
-	mapping(string => Baby) public DNA;
-
-    /// @notice String for base token URI prefix.
-    string public baseTokenURIPrefix;
-
-    /// @notice String for base token URI suffix.
-    string public baseTokenURISuffix;
-
-    /// @notice String for not revealed URI.
-    string public notRevealedURI;
-
-    /// @notice Struct for storing details of baby.
-    struct Baby {
-        uint256 parent1;
-        uint256 parent2;
-        string dna;
-    }
-
-    /// @notice Uint256 for amalgamation price in $PNUT.
-    uint256 public amalgamatePrice;
-
-    /// @notice Uint256 for max supply of the entire collection.
-    uint256 public maxSupply;
 
     /**
-     * @notice Uint256 for sale mode.
+     * @notice Mapping for total number of NFTs minted by an address for a sale mode.
      * Sale modes:
      * 1 = Genesis Whitelist Mint,
      * 2 = OGS Whitelist Mint, 
@@ -150,14 +150,9 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
      * 4 = Genesis Public Mint,
      * 5 = OGS Public Mint,
      * 6 = LuckyList Public Mint,
-     * 7 = Amalgamation / Baby .
+     * 7 = Amalgamation / Baby
      */
-    uint256 public saleMode;
-
-    // EVENTS //
-
-    /// @notice Event emitted when baby is born.
-    event NewBabyBorn(string dna);
+    mapping(uint256 => mapping(address => uint256)) public addressMinted;
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() { 
@@ -166,15 +161,13 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
 
     // INITIALIZATION //
 
-    /// @notice Internal function called when requiring authorization to upgrade to a new implementation.
-    function _authorizeUpgrade(address newImplementation) internal onlyOwner override {}
-
     /// @notice Function to initialize the smart contract. 
     function initialize() initializer public {
-        __ERC721ANameable_init("Lucky Elephant Club", "LEC");
+        __ERC721A_init("Lucky Elephant Club", "LEC");
         __Ownable_init();
         __DefaultOperatorFilterer_init();
         __ERC2981_init();
+        __ERC721ANameable_init();
         __UUPSUpgradeable_init();
 
         saleMode = 1;
@@ -184,7 +177,6 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
 
     /// @notice Modifier for mint compliances.
     modifier mintCompliance(address _to, uint256 _mintAmount) {
-        require(!isContract(msg.sender), "Caller cannot be contract!");
         require(_mintAmount + addressMinted[saleMode][_to] <= _maxMintPerAddress[saleMode], "You can't mint more for the saleMode");
         require(msg.value >= _mintAmount * _price[saleMode], "Insufficient Fund");
         require(_minted[saleMode] + _mintAmount <= _maxSupply[saleMode], "No more NFTs to mint for the saleMode");
@@ -222,7 +214,6 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
         _minted[saleMode]++;
         DNA[pair] = Baby(_singleParent, maxSupply + 1, pair);
         PNUT.burn(msg.sender, amalgamatePrice);
-        emit NewBabyBorn(pair);
     }
 
     /**
@@ -240,7 +231,6 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
         addressMinted[saleMode][msg.sender]++;
         _minted[saleMode]++;
         DNA[pair] = Baby(_parent1, _parent2, pair);
-        emit NewBabyBorn(pair);
     }
 
     /**
@@ -656,6 +646,10 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
 
     // INTERNAL FUNCTIONS //
 
+
+    /// @notice Internal function called when requiring authorization to upgrade to a new implementation.
+    function _authorizeUpgrade(address newImplementation) internal onlyOwner override {}
+
     /// @notice Internal function called for the calculation of rewards for the Genesis token holders.
     function _beforeTokenTransfers(address from, address to, uint256 startTokenId, uint256 quantity) internal virtual override {
         if (startTokenId >= 1 && startTokenId <= _maxSupply[1]) {
@@ -683,15 +677,6 @@ contract LuckyElephantClub is Initializable, ERC721ANameableUpgradeable, Ownable
     function compareDNA(string memory a, string memory b) pure internal returns (bool) {
         return (keccak256(abi.encodePacked((a))) == keccak256(abi.encodePacked((b))));
     }
-
-    /// @notice Internal function called to check caller is a contract.
-    function isContract(address _addr) internal view returns (bool) {
-		uint32 _size;
-		assembly {
-			_size:= extcodesize(_addr)
-		}
-		return (_size > 0);
-	}
 
     /// @notice Internal function called to get dna.
     function getDNAFromPair(uint256 parent1, uint256 parent2) pure internal returns (string memory) {
